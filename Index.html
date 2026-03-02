@@ -1,0 +1,334 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>JK chatroom</title>
+
+
+<style>
+body{
+    margin:0;
+    font-family:Arial, sans-serif;
+    background:linear-gradient(135deg,#cce7ff,#e6f3ff);
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+}
+.card{
+    background:white;
+    width:420px;
+    border-radius:20px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.15);
+    padding:25px;
+}
+h2{ margin-top:0; color:#2a6fdb; }
+input{
+    width:100%;
+    padding:10px;
+    margin:6px 0;
+    border-radius:10px;
+    border:1px solid #c0dfff;
+}
+button{
+    width:100%;
+    padding:10px;
+    margin-top:10px;
+    border:none;
+    border-radius:12px;
+    background:#4da6ff;
+    color:white;
+    font-weight:bold;
+    cursor:pointer;
+}
+button:hover{ background:#3399ff; }
+
+
+#chat{ display:none; flex-direction:column; }
+
+
+#messages{
+    height:300px;
+    overflow-y:auto;
+    padding:0;
+    list-style:none;
+}
+.message{
+    display:flex;
+    align-items:flex-start;
+    margin-bottom:10px;
+}
+.message img{
+    width:35px;
+    height:35px;
+    border-radius:50%;
+    margin-right:8px;
+}
+.bubble{
+    background:#e6f3ff;
+    padding:8px 12px;
+    border-radius:15px;
+    max-width:260px;
+}
+.username{
+    font-weight:bold;
+    color:#2a6fdb;
+}
+</style>
+</head>
+<body>
+
+
+<div class="card">
+
+
+<div id="auth">
+<h2>Sign up / Login</h2>
+<input type="text" id="username" placeholder="Username (for signup)">
+<input type="email" id="email" placeholder="Email/phone">
+<input type="password" id="password" placeholder="Password">
+<input type="file" id="profilePic" accept="image/*">
+<button onclick="signUp()">Sign up</button>
+<button onclick="login()">Login</button>
+</div>
+
+
+<div id="chat">
+<h2>JK chatroom</h2>
+<button onclick="logout()">Logout</button>
+<ul id="messages"></ul>
+<input type="text" id="messageInput" placeholder="Type message...">
+<button onclick="sendMessage()">Send</button>
+</div>
+
+
+</div>
+
+
+<script type="module">
+
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, push, set, get, onChildAdded, off, serverTimestamp } 
+from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } 
+from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+
+// stuffs
+const firebaseConfig = {
+  apiKey: "AIzaSyCvufbt4T_gix3WAvto-q1Ua7gjtbL5FlA",
+  authDomain: "schatroom-bc620.firebaseapp.com",
+  databaseURL: "https://schatroom-bc620-default-rtdb.firebaseio.com/",
+  projectId: "schatroom-bc620",
+  storageBucket: "schatroom-bc620.firebasestorage.app",
+  messagingSenderId: "786847918411",
+  appId: "1:786847918411:web:44e50f480b1039592060ce",
+  measurementId: "G-67G6D5WDBL"
+};
+
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const auth = getAuth(app);
+
+
+let currentUser = null;
+
+
+//////////////////////////////////////////////////////
+// SIGN UP WITH UNIQUE USERNAME
+//////////////////////////////////////////////////////
+
+
+window.signUp = async function(){
+
+
+    const username = document.getElementById("username").value.trim().toLowerCase();
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+    const file = document.getElementById("profilePic").files[0];
+
+
+    if(!username || !file){
+        alert("Username and profile picture required.");
+        return;
+    }
+
+
+    // Check username uniqueness
+    const usernameCheck = await get(ref(db, "usernames/" + username));
+    if(usernameCheck.exists()){
+        alert("Username already taken.");
+        return;
+    }
+
+
+    try{
+        const cred = await createUserWithEmailAndPassword(auth,email,password);
+        const user = cred.user;
+
+
+        const base64Image = await resizeAndConvertToBase64(file);
+
+
+        // Save user profile
+        await set(ref(db,"users/"+user.uid),{
+            username: username,
+            profilePic: base64Image
+        });
+
+
+        // Reserve username
+        await set(ref(db,"usernames/"+username), user.uid);
+
+
+    }catch(err){
+        alert(err.message);
+    }
+};
+
+
+//////////////////////////////////////////////////////
+// LOGIN
+//////////////////////////////////////////////////////
+
+
+window.login = function(){
+    signInWithEmailAndPassword(auth,
+        document.getElementById("email").value,
+        document.getElementById("password").value
+    ).catch(err=>alert(err.message));
+};
+
+
+window.logout = function(){
+    signOut(auth);
+};
+
+
+//////////////////////////////////////////////////////
+// AUTH STATE
+//////////////////////////////////////////////////////
+
+
+onAuthStateChanged(auth, (user)=>{
+
+
+    off(ref(db,"messages"));
+    document.getElementById("messages").innerHTML="";
+
+
+    if(user){
+        currentUser = user;
+        document.getElementById("auth").style.display="none";
+        document.getElementById("chat").style.display="flex";
+        loadMessages();
+    }else{
+        document.getElementById("auth").style.display="block";
+        document.getElementById("chat").style.display="none";
+    }
+});
+
+
+//////////////////////////////////////////////////////
+// SEND MESSAGE (ONLY STORE UID)
+//////////////////////////////////////////////////////
+
+
+window.sendMessage = async function(){
+
+
+    const text = document.getElementById("messageInput").value.trim();
+    if(!text || !currentUser) return;
+
+
+    await push(ref(db,"messages"),{
+        uid: currentUser.uid,
+        text: text,
+        timestamp: serverTimestamp()
+    });
+
+
+    document.getElementById("messageInput").value="";
+};
+
+
+//////////////////////////////////////////////////////
+// LOAD MESSAGES (LOOK UP USER DATA)
+//////////////////////////////////////////////////////
+
+
+function loadMessages(){
+
+
+    onChildAdded(ref(db,"messages"), async (snapshot)=>{
+
+
+        const msg = snapshot.val();
+        if(!msg) return;
+
+
+        const userSnap = await get(ref(db,"users/"+msg.uid));
+        if(!userSnap.exists()) return;
+
+
+        const userData = userSnap.val();
+
+
+        const li = document.createElement("li");
+        li.className="message";
+
+
+        const img = document.createElement("img");
+        img.src = userData.profilePic || "";
+
+
+        const bubble = document.createElement("div");
+        bubble.className="bubble";
+        bubble.innerHTML = `
+            <div class="username">${userData.username}</div>
+            <div>${msg.text}</div>
+        `;
+
+
+        li.appendChild(img);
+        li.appendChild(bubble);
+
+
+        const container = document.getElementById("messages");
+        container.appendChild(li);
+        container.scrollTop = container.scrollHeight;
+    });
+}
+
+
+//////////////////////////////////////////////////////
+// IMAGE RESIZE
+//////////////////////////////////////////////////////
+
+
+function resizeAndConvertToBase64(file){
+    return new Promise((resolve)=>{
+        const reader=new FileReader();
+        reader.onload=function(e){
+            const img=new Image();
+            img.onload=function(){
+                const canvas=document.createElement("canvas");
+                const size=48;
+                canvas.width=size;
+                canvas.height=size;
+                const ctx=canvas.getContext("2d");
+                ctx.drawImage(img,0,0,size,size);
+                resolve(canvas.toDataURL("image/jpeg",0.6));
+            };
+            img.src=e.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+
+</script>
+</body>
+</html>
