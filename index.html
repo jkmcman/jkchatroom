@@ -195,7 +195,6 @@ window.logout = function(){
 };
 
 // auth
-
 onAuthStateChanged(auth, (user)=>{
 
     off(ref(db,"messages"));
@@ -205,13 +204,14 @@ onAuthStateChanged(auth, (user)=>{
         currentUser = user;
         document.getElementById("auth").style.display="none";
         document.getElementById("chat").style.display="flex";
+
         loadMessages();
+        setupPushNotifications();   
+
     }else{
+        currentUser = null;
         document.getElementById("auth").style.display="block";
         document.getElementById("chat").style.display="none";
-if(user){
-    currentUser = user;
-    setupPushNotifications();
     }
 });
 
@@ -339,4 +339,5 @@ function resizeAndConvertToBase64(file){
 </script>
 </body>
 </html>
+
 
