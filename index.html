@@ -1,9 +1,8 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
 <title>JK chatroom</title>
-
 
 <style>
 body{
@@ -43,9 +42,7 @@ button{
 }
 button:hover{ background:#3399ff; }
 
-
 #chat{ display:none; flex-direction:column; }
-
 
 #messages{
     height:300px;
@@ -78,9 +75,7 @@ button:hover{ background:#3399ff; }
 </head>
 <body>
 
-
 <div class="card">
-
 
 <div id="auth">
 <h2>Sign up / Login</h2>
@@ -92,7 +87,6 @@ button:hover{ background:#3399ff; }
 <button onclick="login()">Login</button>
 </div>
 
-
 <div id="chat">
 <h2>JK chatroom</h2>
 <button onclick="logout()">Logout</button>
@@ -101,12 +95,9 @@ button:hover{ background:#3399ff; }
 <button onclick="sendMessage()">Send</button>
 </div>
 
-
 </div>
 
-
 <script type="module">
-
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, push, set, get, onChildAdded, off, serverTimestamp } 
@@ -114,8 +105,7 @@ from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } 
 from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-
-// stuffs
+// config
 const firebaseConfig = {
   apiKey: "AIzaSyCvufbt4T_gix3WAvto-q1Ua7gjtbL5FlA",
   authDomain: "schatroom-bc620.firebaseapp.com",
@@ -127,34 +117,39 @@ const firebaseConfig = {
   measurementId: "G-67G6D5WDBL"
 };
 
-
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
 
-
 let currentUser = null;
 
+// ask perms
+if ("Notification" in window) {
+    if (Notification.permission !== "granted") {
+        Notification.requestPermission();
+    }
+}
 
-//////////////////////////////////////////////////////
-// SIGN UP WITH UNIQUE USERNAME
-//////////////////////////////////////////////////////
+// send notif
+function sendNotification(username, message) {
+    if (Notification.permission === "granted") {
+        new Notification(`${username}: ${message}`);
+    }
+}
 
+// sign up
 
 window.signUp = async function(){
-
 
     const username = document.getElementById("username").value.trim().toLowerCase();
     const email = document.getElementById("email").value;
     const password = document.getElementById("password").value;
     const file = document.getElementById("profilePic").files[0];
 
-
     if(!username || !file){
         alert("Username and profile picture required.");
         return;
     }
-
 
     // Check username uniqueness
     const usernameCheck = await get(ref(db, "usernames/" + username));
@@ -163,14 +158,11 @@ window.signUp = async function(){
         return;
     }
 
-
     try{
         const cred = await createUserWithEmailAndPassword(auth,email,password);
         const user = cred.user;
 
-
         const base64Image = await resizeAndConvertToBase64(file);
-
 
         // Save user profile
         await set(ref(db,"users/"+user.uid),{
@@ -178,21 +170,15 @@ window.signUp = async function(){
             profilePic: base64Image
         });
 
-
         // Reserve username
         await set(ref(db,"usernames/"+username), user.uid);
-
 
     }catch(err){
         alert(err.message);
     }
 };
 
-
-//////////////////////////////////////////////////////
-// LOGIN
-//////////////////////////////////////////////////////
-
+// login
 
 window.login = function(){
     signInWithEmailAndPassword(auth,
@@ -201,23 +187,16 @@ window.login = function(){
     ).catch(err=>alert(err.message));
 };
 
-
 window.logout = function(){
     signOut(auth);
 };
 
-
-//////////////////////////////////////////////////////
-// AUTH STATE
-//////////////////////////////////////////////////////
-
+// auth
 
 onAuthStateChanged(auth, (user)=>{
 
-
     off(ref(db,"messages"));
     document.getElementById("messages").innerHTML="";
-
 
     if(user){
         currentUser = user;
@@ -230,18 +209,12 @@ onAuthStateChanged(auth, (user)=>{
     }
 });
 
-
-//////////////////////////////////////////////////////
-// SEND MESSAGE (ONLY STORE UID)
-//////////////////////////////////////////////////////
-
+// send message 
 
 window.sendMessage = async function(){
 
-
     const text = document.getElementById("messageInput").value.trim();
     if(!text || !currentUser) return;
-
 
     await push(ref(db,"messages"),{
         uid: currentUser.uid,
@@ -249,40 +222,28 @@ window.sendMessage = async function(){
         timestamp: serverTimestamp()
     });
 
-
     document.getElementById("messageInput").value="";
 };
 
-
-//////////////////////////////////////////////////////
-// LOAD MESSAGES (LOOK UP USER DATA)
-//////////////////////////////////////////////////////
-
+// load
 
 function loadMessages(){
 
-
     onChildAdded(ref(db,"messages"), async (snapshot)=>{
-
 
         const msg = snapshot.val();
         if(!msg) return;
 
-
         const userSnap = await get(ref(db,"users/"+msg.uid));
         if(!userSnap.exists()) return;
 
-
         const userData = userSnap.val();
-
 
         const li = document.createElement("li");
         li.className="message";
 
-
         const img = document.createElement("img");
         img.src = userData.profilePic || "";
-
 
         const bubble = document.createElement("div");
         bubble.className="bubble";
@@ -291,22 +252,21 @@ function loadMessages(){
             <div>${msg.text}</div>
         `;
 
-
         li.appendChild(img);
         li.appendChild(bubble);
-
 
         const container = document.getElementById("messages");
         container.appendChild(li);
         container.scrollTop = container.scrollHeight;
+
+        // actual send notif
+        if (currentUser && msg.uid !== currentUser.uid) {
+            sendNotification(userData.username, msg.text);
+        }
     });
 }
 
-
-//////////////////////////////////////////////////////
-// IMAGE RESIZE
-//////////////////////////////////////////////////////
-
+// compression
 
 function resizeAndConvertToBase64(file){
     return new Promise((resolve)=>{
@@ -327,7 +287,6 @@ function resizeAndConvertToBase64(file){
         reader.readAsDataURL(file);
     });
 }
-
 
 </script>
 </body>
