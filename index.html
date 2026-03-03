@@ -99,6 +99,8 @@ button:hover{ background:#3399ff; }
 
 <script type="module">
 
+import { getMessaging, getToken, onMessage } 
+from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getDatabase, ref, push, set, get, onChildAdded, off, serverTimestamp } 
 from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
@@ -120,7 +122,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
-
+const messaging = getMessaging(app);
+    
 let currentUser = null;
 
 // ask perms
@@ -206,9 +209,31 @@ onAuthStateChanged(auth, (user)=>{
     }else{
         document.getElementById("auth").style.display="block";
         document.getElementById("chat").style.display="none";
+if(user){
+    currentUser = user;
+    setupPushNotifications();
     }
 });
 
+async function setupPushNotifications() {
+
+    try {
+        const permission = await Notification.requestPermission();
+        if (permission !== "granted") return;
+
+        const token = await getToken(messaging, {
+            vapidKey: "BG26OuNvGmzNWDUYsFFuGCyqTO_YVDTKogGRQBe5B6DgWoHWl9ZEcJzVwuMBR3iy5ns1MobaSwvVgwhiAluCIOA"
+        });
+
+        if (currentUser && token) {
+            await set(ref(db, "users/" + currentUser.uid + "/fcmToken"), token);
+        }
+
+    } catch (err) {
+        console.error("Push setup error:", err);
+    }
+}
+    
 // send message 
 
 window.sendMessage = async function(){
@@ -223,6 +248,29 @@ window.sendMessage = async function(){
     });
 
     document.getElementById("messageInput").value="";
+// Send push to other users
+const usersSnap = await get(ref(db, "users"));
+
+usersSnap.forEach(userSnap => {
+    const userData = userSnap.val();
+
+    if(userSnap.key !== currentUser.uid && userData.fcmToken){
+        fetch("https://fcm.googleapis.com/fcm/send", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": "key=YOUR_SERVER_KEY"
+            },
+            body: JSON.stringify({
+                to: userData.fcmToken,
+                notification: {
+                    title: userData.username,
+                    body: text
+                }
+            })
+        });
+    }
+});
 };
 
 // load
@@ -291,3 +339,4 @@ function resizeAndConvertToBase64(file){
 </script>
 </body>
 </html>
+
